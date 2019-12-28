@@ -97,8 +97,15 @@ namespace Todo
         #region Commands
         public void add(string command)
         {
-            CurrentDirectory.Content.Add(new Todo(command));
-            RenderDirectory();
+            if (!CurrentDirectory.Content.Exists(item => item.Name == command))
+            {
+                CurrentDirectory.Content.Add(new Todo(command));
+                RenderDirectory();
+            }
+            else
+            {
+                Console.WriteLine($"item {command} already exists");
+            }
         }
 
         public void add(string name, string description, string plannedHoursString)
