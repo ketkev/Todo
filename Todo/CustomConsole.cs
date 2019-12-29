@@ -255,7 +255,7 @@ namespace Todo
 
             if (CurrentDirectory.Content.Exists(todoItem => todoItem.Name == itemName) && CurrentDirectory.Content.Find(todoItem => todoItem.Name == itemName) is Todo)
             {
-                ((Todo)CurrentDirectory.Content.Find(todoItem => todoItem.Name == itemName)).PlannedHours += decimalHoursWorked;
+                ((Todo)CurrentDirectory.Content.Find(todoItem => todoItem.Name == itemName)).ActualHours += decimalHoursWorked;
                 RenderDirectory();
             }
             else
