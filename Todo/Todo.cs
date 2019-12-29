@@ -5,7 +5,7 @@ using System.Text;
 namespace Todo
 {
     [Serializable]
-    class Todo : IItem
+    public class Todo : IItem
     {
         public string Name { get; set; }
         public string Description { get; set; }

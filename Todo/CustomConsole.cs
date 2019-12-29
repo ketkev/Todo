@@ -1,23 +1,27 @@
 ﻿using ConsoleTables;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Serialization;
+using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Todo
 {
-    class CustomConsole
+    public class CustomConsole
     {
         Type thisType;
-        String CommandString;
         Dir CurrentDirectory;
 
         public CustomConsole(Dir dir)
         {
             thisType = this.GetType();
             CurrentDirectory = dir;
+
+            import("default");
 
             RenderDirectory();
             WaitForCommand();
@@ -29,9 +33,9 @@ namespace Todo
             {
                 Console.WriteLine();
                 Console.Write("> ");
-                CommandString = Console.ReadLine();
+                string CommandString = Console.ReadLine();
 
-                String[] Commands = Regex.Matches(CommandString, @"(?:\""(.+?)\"")|(\w+)")
+                String[] Commands = Regex.Matches(CommandString, @"(?:\""(.+?)\"")|(\w+|\.\.)")
                                                     .OfType<Match>()
                                                     .Select(m => m.Groups[0].Value)
                                                     .ToArray();
@@ -39,6 +43,12 @@ namespace Todo
                 for (int i = 0; i < Commands.Length; i++)
                 {
                     Commands[i] = Commands[i].Replace("\"", "");
+                }
+
+                if (Commands.Length == 0)
+                {
+                    Console.WriteLine("Unknown command: ");
+                    continue;
                 }
 
                 Type[] parameters = (from string item in Commands
@@ -82,37 +92,179 @@ namespace Todo
         public void RenderDirectory()
         {
             Console.Clear();
-            ConsoleTable table = new ConsoleTable("name", "description", "planned hours", "actual hours", "done");
+            ConsoleTable table = new ConsoleTable("Name", "Description", "PlannedHours", "ActualHours", "Done");
             table.Options.EnableCount = false;
 
-            foreach (Todo item in CurrentDirectory.Content)
+            Dir[] dirs = Array.ConvertAll(CurrentDirectory.Content.FindAll(item => item is Dir).ToArray(), item => (Dir)item);
+            Todo[] todos = Array.ConvertAll(CurrentDirectory.Content.FindAll(item => item is Todo).ToArray(), item => (Todo)item);
+
+            foreach (Dir dir in dirs)
             {
-                table.AddRow(item.Name, item.Description, item.PlannedHours, item.ActualHours, item.Done);
+                table.AddRow(dir.Name, "", "", "", "");
+            }
+            foreach (Todo todo in todos)
+            {
+                table.AddRow(todo.Name, todo.Description, todo.PlannedHours, todo.ActualHours, todo.Done);
             }
 
             table.Write();
         }
         #endregion
 
-        #region Commands
-        public void add(string command)
+        public Dir findRootDir()
         {
-            if (!CurrentDirectory.Content.Exists(item => item.Name == command))
+            Dir rootDir = CurrentDirectory;
+            while (rootDir != rootDir.root)
             {
-                CurrentDirectory.Content.Add(new Todo(command));
-                RenderDirectory();
+                rootDir = rootDir.root;
+            }
+            return rootDir;
+        }
+
+        #region Commands
+
+        public void export(string fileName)
+        {
+            FileStream file;
+
+            IFormatter formatter = new BinaryFormatter();
+
+            var path = Environment.CurrentDirectory + $"\\{fileName}.todo";
+            if (File.Exists(path))
+            {
+                file = new FileStream(path, FileMode.Open, FileAccess.Write);
             }
             else
             {
-                Console.WriteLine($"item {command} already exists");
+                file = System.IO.File.Create(path);
+            }
+
+            Console.WriteLine($"Exported {fileName}");
+            formatter.Serialize(file, findRootDir());
+            file.Close();
+        }
+
+        public void import(string fileName)
+        {
+            FileStream file;
+
+            IFormatter formatter = new BinaryFormatter();
+            var path = Environment.CurrentDirectory + $"\\{fileName}.todo";
+
+            if (File.Exists(path))
+            {
+                file = new FileStream(path, FileMode.Open, FileAccess.Read);
+                CurrentDirectory = (Dir)formatter.Deserialize(file);
+                file.Close();
+                Console.WriteLine($"Imported {fileName}");
+            }
+            else
+            {
+                Console.WriteLine($"File {fileName} couldn't be found");
             }
         }
 
         public void add(string name, string description, string plannedHoursString)
         {
-            decimal plannedHours = Decimal.Parse(plannedHoursString);
-            CurrentDirectory.Content.Add(new Todo(name, description, plannedHours));
+            if (!CurrentDirectory.Content.Exists(item => item.Name == name))
+            {
+                decimal plannedHours = Decimal.Parse(plannedHoursString);
+                CurrentDirectory.Content.Add(new Todo(name, description, plannedHours));
+                RenderDirectory();
+            }
+            else
+            {
+                Console.WriteLine($"item {name} already exists");
+            }
+        }
+        public void add(string command) => add(command, "", "0");
+
+        public void remove(string itemName)
+        {
+            if (CurrentDirectory.Content.Exists(item => item.Name == itemName))
+            {
+                CurrentDirectory.Content.Remove(CurrentDirectory.Content.Find(item => item.Name == itemName));
+                RenderDirectory();
+            }
+            else
+            {
+                Console.WriteLine($"item {itemName} couldn't be found");
+            }
+        }
+
+        public void edit(string itemName, string rowName, string value)
+
+        {
+            IItem currentItem = CurrentDirectory.Content.Find(item => item.Name == itemName);
+            if (currentItem is Todo)
+            {
+                bool flag = currentItem.GetType()
+                    .GetProperties()
+                    .ToList()
+                    .Exists(item => item.Name == rowName);
+                try
+                {
+                    if (flag)
+                    {
+                        PropertyInfo property = ((Todo)CurrentDirectory.Content.Find(item => item.Name == itemName)).GetType().GetProperty(rowName);
+                        var convertedValue = Convert.ChangeType(value, property.PropertyType);
+                        property.SetValue(currentItem, convertedValue);
+                    }
+                    RenderDirectory();
+                }
+                catch
+                {
+                    Console.WriteLine("Invalid argument value");
+                }
+            }
+            else
+            {
+                Console.WriteLine($"item {itemName} couldn't be found");
+            }
+        }
+
+        public void prune()
+        {
+            CurrentDirectory.Content.FindAll(item => item is Todo).ForEach(delegate (IItem item)
+            {
+                if (((Todo)item).Done)
+                {
+                    CurrentDirectory.Content.Remove(item);
+                }
+            });
             RenderDirectory();
+        }
+
+        public void finish(string itemName)
+        {
+            Todo item = CurrentDirectory.Content.Find(item => item.Name == itemName) as Todo;
+            if (item != null)
+            {
+                item.Done = true;
+                RenderDirectory();
+            }
+            else
+            {
+                Console.WriteLine($"item {itemName} couldn't be found");
+            }
+        }
+
+        public void worked(string itemName, string hoursWorked)
+        {
+            decimal decimalHoursWorked = Decimal.Parse(hoursWorked);
+
+            if (CurrentDirectory.Content.Exists(todoItem => todoItem.Name == itemName) && CurrentDirectory.Content.Find(todoItem => todoItem.Name == itemName) is Todo)
+            {
+                ((Todo)CurrentDirectory.Content.Find(todoItem => todoItem.Name == itemName)).PlannedHours += decimalHoursWorked;
+                RenderDirectory();
+            }
+            else
+            {
+                Console.WriteLine($"item {itemName} couldn't be found");
+            }
+
+
+
         }
 
         public void unknownCommand(string command)
@@ -141,6 +293,9 @@ namespace Todo
             Console.WriteLine("\tworked <item> <hours>");
             Console.WriteLine("\tIncreases the worked hours\n");
 
+            Console.WriteLine("\tfinish <item>");
+            Console.WriteLine("\tFinishes the specified item\n");
+
             Console.WriteLine("\tcd <dirname>");
             Console.WriteLine("\tChange directory\n");
 
@@ -152,6 +307,9 @@ namespace Todo
 
             Console.WriteLine("\timport <filename>");
             Console.WriteLine("\tImport a list of todo's\n");
+
+            Console.WriteLine("\tprune");
+            Console.WriteLine("\tDeletes all finished items from the current directory\n");
 
             Console.WriteLine("\tlicense");
             Console.WriteLine("\tAll the open source licenses used in this project\n");
@@ -172,13 +330,54 @@ namespace Todo
         public void clear()
         {
             Console.Clear();
+            RenderDirectory();
         }
 
         public void quit()
         {
+            export("default");
             Console.WriteLine("Bye!");
             Environment.Exit(0);
         }
+
+        #region Directory management
+        public void mkdir(string dirName)
+        {
+            if (!CurrentDirectory.Content.Exists(item => item.Name == dirName))
+            {
+                Dir newDir = new Dir(dirName, CurrentDirectory, new List<IItem>());
+                CurrentDirectory.Content.Add(newDir);
+                RenderDirectory();
+            }
+            else
+            {
+                Console.WriteLine($"item {dirName} already exists");
+            }
+        }
+
+        public void cd(string dirName)
+        {
+            if (dirName == "..")
+            {
+                CurrentDirectory = CurrentDirectory.root;
+                RenderDirectory();
+            }
+            else if (CurrentDirectory.Content.Exists(item => item.Name == dirName && item is Dir))
+            {
+                CurrentDirectory = (Dir)CurrentDirectory.Content.Find(item => item.Name == dirName);
+                RenderDirectory();
+            }
+            else
+            {
+                Console.WriteLine($"directory {dirName} couldn't be found");
+            }
+        }
+        #endregion
+
+        #region commandAliases
+        public void work(string itemName, string hoursWorked) => worked(itemName, hoursWorked);
+        public void exit() => quit();
+        #endregion
         #endregion
     }
 }

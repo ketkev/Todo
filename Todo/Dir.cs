@@ -4,7 +4,8 @@ using System.Text;
 
 namespace Todo
 {
-    class Dir : IItem
+    [Serializable]
+    public class Dir : IItem
     {
         public string Name { get; set; }
         public Dir root { get; set; }
@@ -21,6 +22,13 @@ namespace Todo
         {
             Name = name;
             Content = content;
+            root = this;
+        }
+
+        public Dir()
+        {
+            Name = "";
+            Content = new List<IItem>();
             root = this;
         }
     }

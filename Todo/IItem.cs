@@ -4,7 +4,7 @@ using System.Text;
 
 namespace Todo
 {
-    interface IItem
+    public interface IItem
     {
         public string Name { get; set; }
     }
