@@ -8,6 +8,11 @@
     <PublishSingleFile>true</PublishSingleFile>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <ApplicationIcon>Todo-Icon.ico</ApplicationIcon>
+    <Authors>Kevin Joosten</Authors>
+    <Product />
+    <Company />
+    <SignAssembly>false</SignAssembly>
+    <AssemblyOriginatorKeyFile>Kevin Joosten.pfx</AssemblyOriginatorKeyFile>
   </PropertyGroup>
 
   <ItemGroup>
